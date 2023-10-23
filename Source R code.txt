@@ -1,0 +1,440 @@
+#' @Function qD is used to compute Hill diversity.
+qD <- function(x, q){
+  p <- x[x > 0] / sum(x)
+  
+  Sub <- function(q) {
+    if(q == 0) sum(p > 0)
+    else if(q == 1) exp(-sum(p * log(p)))
+    else exp(1 / (1 - q) * log(sum(p^q)))
+  }
+  
+  sapply(q, Sub)
+}
+
+#' @Function MF.uncor is used to compute proposed uncorrelated multifunctionality in the paper.
+MF.uncor = function(fi, wi, q) {
+  
+  ai = fi / sum(fi)
+  V = sum(wi * ai * fi)
+  wi = wi[ai > 0]
+  fi = fi[ai > 0]
+  ai = ai[ai > 0]
+  data.frame('qF' = sapply(q, function(q) ifelse(q == 1, exp(-sum(wi * fi * ai/V * log(ai/V))), 
+                                                 sum(wi * fi * (ai / V)^q) ^ (1 / (1 - q)))
+                           ),
+             'q' = q)
+}
+
+#' @Function MF.uncor is used to compute proposed correlated multifunctionality in the paper.
+MF.cor = function(fi, wi, distM, tau = seq(0, 1, 0.01), q) {
+  
+  distM <- distM[fi > 0, fi > 0]
+  wi <- wi[fi > 0]
+  fi <- fi[fi > 0]
+  
+  data_transform = function (fi, dij, tau) {
+    
+    out <- lapply(tau, function(tau_) {
+      dij_ <- dij
+      
+      if (tau_ == 0) {
+        dij_[dij_ > 0] <- 1
+        a <- as.vector((1 - dij_/1) %*% fi)
+      } else {
+        dij_[which(dij_ > tau_, arr.ind = T)] <- tau_
+        a <- as.vector((1 - dij_/tau_) %*% fi)
+      }
+      
+      v <- fi/a
+      v[a == 0] = 1
+      cbind(a, v)
+    }) 
+    
+    out_a <- matrix(sapply(out, function(x) x[, 1]), ncol = length(tau))
+    out_v <- matrix(sapply(out, function(x) x[, 2]), ncol = length(tau))
+    colnames(out_a) <- colnames(out_v) <- paste0("tau_", round(tau, 3))
+    
+    list(ai = out_a, vi = out_v)
+  }
+  
+  aivi = data_transform(fi, distM, tau)
+  
+  tmp = lapply(1:length(tau), function(i) 
+    data.frame('qF' = sapply(q, function(q) ifelse(q == 1, 
+                                                   exp(-sum(wi * fi * aivi$vi[,i] * aivi$ai[,i]/sum(wi * fi * aivi$vi[,i] * aivi$ai[,i]) * 
+                                                              log(aivi$ai[,i]/sum(wi * fi * aivi$vi[,i] * aivi$ai[,i]))
+                                                   )), 
+                                                   sum(wi * fi * aivi$vi[,i] * (aivi$ai[,i] / sum(wi * fi * aivi$vi[,i] * aivi$ai[,i]))^q) ^ (1 / (1 - q)))
+                             ),
+               'q' = q,
+               'tau' = tau[i])) %>% do.call(rbind,.)
+  
+  tmp = rbind(tmp,
+              tmp %>% group_by(q) %>% summarise(AUC_L = sum(qF[seq_along(qF[-1])] * diff(tau)), AUC_R = sum(qF[-1] * diff(tau))) %>%
+                ungroup %>% mutate(qF = (AUC_L + AUC_R)/2) %>% select(qF, q) %>% mutate(tau = 'AUC'))
+  
+  return(tmp)
+}
+
+#' @Function beta.MF.uncor is used to compute proposed uncorrelated alpha, beta, and gamma multifunctionality in the paper.
+beta.MF.uncor = function(fij, q) {
+  
+  wi = rep(1, nrow(fij))
+  Rj = rep(1/ncol(fij), ncol(fij))
+  
+  wi = wi[rowSums(fij) != 0]
+  fij = fij[rowSums(fij) != 0,]
+  exist = as.vector(fij != 0)
+  fi.bar = apply(fij, 1, function(x) sum(x * Rj))
+  
+  gamma = MF.uncor(fi.bar, wi, q = q)
+  
+  Rfij = rep(Rj, each = nrow(fij)) * as.vector(fij)
+  Vi = rep(wi * fi.bar, ncol(fij))
+  N = ncol(fij)
+  
+  alpha = data.frame('qF' = sapply(q, function(q) ifelse(q == 1, 
+                                                         exp( -sum(Vi[Rfij > 0] * Rfij[Rfij > 0] / sum(Vi[Rfij > 0] * Rfij[Rfij > 0]) * 
+                                                                     log(Rfij[Rfij > 0] / sum(Vi[Rfij > 0] * Rfij[Rfij > 0])) )), 
+                                                         sum(Vi[Rfij > 0] * (Rfij[Rfij > 0] / sum(Vi[Rfij > 0] * Rfij[Rfij > 0]))^q) ^ (1 / (1 - q)))
+                                   ) / N,
+                     'q' = q)
+  
+  beta = gamma %>% mutate('qF' = gamma$qF / alpha$qF)
+  
+  rbind(gamma %>% mutate(Type = 'Gamma'),
+        alpha %>% mutate(Type = 'Alpha'), 
+        beta %>% mutate(Type = 'Beta'))
+  }
+
+#' @Function beta.MF.cor is used to compute proposed correlated alpha, beta, and gamma multifunctionality in the paper.
+beta.MF.cor = function(fij, distM, tau = seq(0, 1, 0.01), q) {
+  
+  wi = rep(1, nrow(fij))
+  Rj = rep(1/ncol(fij), ncol(fij))
+  
+  wi = wi[rowSums(fij) != 0]
+  distM = distM[rowSums(fij) != 0, rowSums(fij) != 0]
+  fij = fij[rowSums(fij) != 0,]
+  exist = as.vector(fij != 0)
+  fi.bar = apply(fij, 1, function(x) sum(x * Rj))
+  
+  data_transform = function (fi, dij, tau) {
+    
+    out <- lapply(tau, function(tau_) {
+      dij_ <- dij
+      
+      if (tau_ == 0) {
+        dij_[dij_ > 0] <- 1
+        a <- as.vector((1 - dij_/1) %*% fi)
+      } else {
+        dij_[which(dij_ > tau_, arr.ind = T)] <- tau_
+        a <- as.vector((1 - dij_/tau_) %*% fi)
+      }
+      
+      v <- fi/a
+      v[a == 0] = 1
+      cbind(a, v)
+    }) 
+    
+    out_a <- matrix(sapply(out, function(x) x[, 1]), ncol = length(tau))
+    out_v <- matrix(sapply(out, function(x) x[, 2]), ncol = length(tau))
+    colnames(out_a) <- colnames(out_v) <- paste0("tau_", round(tau, 3))
+    
+    list(ai = out_a, vi = out_v)
+  }
+  
+  gamma = MF.cor(fi.bar, wi, distM, q = q)
+  
+  aivi.gamma = data_transform(fi.bar, distM, tau)
+  
+  N = ncol(fij)
+  aij = lapply(1:ncol(fij), function(i) data_transform(fij[,i], distM, tau)$ai) %>% do.call(rbind,.)
+  vi.plus = aivi.gamma$vi
+  vi.plus = lapply(1:N, function(i) apply(vi.plus, 2, function(x) x*fi.bar)) %>% do.call(rbind,.)
+  wi.long = rep(wi, N)
+  
+  alpha = lapply(1:length(tau), function(i) 
+    data.frame('qF' = sapply(q, function(q) ifelse(q == 1, 
+                                                   exp(-sum(wi.long[aij[,i]>0] * vi.plus[aij[,i]>0, i] * aij[aij[,i]>0, i] / sum(N * wi * fi.bar^2) * 
+                                                              log(aij[aij[,i]>0, i]/sum(N * wi * fi.bar^2)))), 
+                                                   sum(wi.long[exist | aij[,i]>0] * vi.plus[exist | aij[,i]>0, i] * (aij[exist | aij[,i]>0, i] / sum(N * wi * fi.bar^2))^q) ^ (1 / (1 - q))
+                                                   )
+                             ) / N,
+               'q' = q,
+               'tau' = tau[i])) %>% do.call(rbind,.)
+  
+  alpha = rbind(alpha,
+                alpha %>% group_by(q) %>% summarise(AUC_L = sum(qF[seq_along(qF[-1])] * diff(tau)), AUC_R = sum(qF[-1] * diff(tau))) %>% 
+                  ungroup %>% mutate(qF = (AUC_L + AUC_R)/2) %>% select(qF, q) %>% mutate(tau = 'AUC'))
+  
+  beta = gamma %>% mutate('qF' = gamma$qF / alpha$qF)
+  beta = beta[1:(nrow(beta)-3),]
+  beta$tau = as.numeric(beta$tau)
+  beta = rbind(beta,
+               beta %>% group_by(q) %>% summarise(AUC_L = sum(qF[seq_along(qF[-1])] * diff(tau)), AUC_R = sum(qF[-1] * diff(tau))) %>% 
+                 ungroup %>% mutate(qF = (AUC_L + AUC_R)/2) %>% select(qF, q) %>% mutate(tau = 'AUC'))
+  
+  rbind(gamma %>% mutate(Type = 'Gamma'),
+        alpha %>% mutate(Type = 'Alpha'), 
+        beta %>% mutate(Type = 'Beta'))
+}
+
+#' @Function standardize.Ratcliffe is used to standardize Ratcliffe data.
+standardize.Ratcliffe = function(Ratcliffe) {
+  
+  Ratcliffe$plotid = substr(Ratcliffe$plotid, 1, 3)
+  
+  Ratcliffe$root_biomass[Ratcliffe$root_biomass == 0] = NA
+  Ratcliffe$lai[Ratcliffe$lai == 0] = NA
+  
+  
+  Ratcliffe[, variables] = sapply(variables, function(i) {
+    value = Ratcliffe[, i]
+    index = which(is.na(value))
+    
+    if (length(index) > 0) value[index] = sapply(index, function(j) mean(Ratcliffe[Ratcliffe$plotid == Ratcliffe$plotid[j], i], na.rm = T))
+    
+    return(value)
+  })
+  
+  
+  
+  Ratcliffe <- Ratcliffe %>%
+    cbind(
+      lapply(unique(Ratcliffe$plotid), function(i) {
+        plotiddata = Ratcliffe %>% filter(plotid == i)
+        
+        plotiddata = plotiddata %>% mutate(soil_cn_ff_10 = -1*soil_cn_ff_10 + max(soil_cn_ff_10, na.rm = T),
+                                           wue = -1*wue + max(wue, na.rm = T))
+        index = ifelse(sum(plotiddata$wood_decomp_day < 0) > 0, 1, 0)
+        
+        if (index == 1) plotiddata$wood_decomp_day = plotiddata$wood_decomp_day - min(plotiddata$wood_decomp_day)
+        
+        tmp = sapply(variables, function(x) {
+          
+          tmp = (plotiddata[,x] - min(plotiddata[,x])) / (max(plotiddata[,x]) - min(plotiddata[,x]))
+          
+          if (min(plotiddata[,x]) > 0) tmp[tmp == min(tmp)] = 1e-15
+          
+          tmp
+        })
+        
+        tmp = data.frame(tmp)
+        
+        tmp$wue[plotiddata$wue == 0] = 1e-15
+        tmp$soil_cn_ff_10[plotiddata$soil_cn_ff_10 == 0] = 1e-15
+        if (index == 1) tmp$wood_decomp_day[plotiddata$wood_decomp_day == 0] = 1e-15
+        
+        return(tmp)
+        
+      }) %>% do.call(rbind,.) %>% set_colnames(., paste0(variables, ".std"))
+    )
+  
+  return(Ratcliffe)
+}
+
+#' @Function fig_alpha_gamma_beta is used to fit linear mixed model and plot alpha, gamma, and beta figures.
+fig_alpha_gamma_beta = function(result, type = c("uncorrected", "corrected")) {
+  
+  result = result %>% mutate(name = paste(q, Type, Dissimilarity, sep = '.'))
+  
+  result = result %>% arrange(name) 
+  result = result %>% group_by(name) %>% 
+    do(lmer(formula = qF ~ 1 + value + (1 + value | plotid), data = . ) %>% 
+         predict %>% tibble(fit = .)) %>% 
+    ungroup %>% select(fit) %>% bind_cols(result) %>% mutate("p_value" = 0, 'Sig' = 'Significant slope (P < 0.05)')
+  
+  
+  slope = lapply(1:length(unique(result$name)), function(j) {
+    
+    myout_ <- result %>% filter(name == unique(result$name)[j], plotid != "FIN")
+    
+    model = lmer(formula = qF ~ 1 + value + (1 + value | plotid), data = myout_)
+    
+    ##
+    slope = coef(model)$plotid$value
+    slope = ifelse(round(abs(slope), 3) < 0.001, slope %>% round(., 4) %>% paste("Slope = ", ., sep = ""), 
+                   ifelse(round(abs(slope), 2) < 0.01, slope %>% round(., 3) %>% paste("Slope = ", ., sep = ""),
+                          format(slope %>% round(., 2), nsmall = 2)  %>% paste("Slope = ", ., sep = "")))
+    
+    tmp = myout_[ !duplicated(myout_[, c('q', 'Type', 'Dissimilarity', 'plotid')]),] %>% select(c('q', 'Type', 'Dissimilarity', 'plotid'))
+    
+    ##
+    slope_lmm = summary(model)$coefficients[2, 'Estimate']
+    slope_lmm = ifelse(round(abs(slope_lmm), 3) < 0.001, slope_lmm %>% round(., 4) %>% paste("Slope = ", ., sep = ""), 
+                       ifelse(round(abs(slope_lmm), 2) < 0.01, slope_lmm %>% round(., 3) %>% paste("Slope = ", ., sep = ""),
+                              format(slope_lmm %>% round(., 2), nsmall = 2) %>% paste("Slope = ", ., sep = "")))
+    
+    tmp_lmm = myout_[ !duplicated(myout_[, c('q', 'Type', 'Dissimilarity')]),] %>% select(c('q', 'Type', 'Dissimilarity'))
+    
+    rbind(cbind(tmp, x = max(myout_$value), y = max(myout_$qF), Slope = slope),
+          cbind(tmp_lmm, plotid = 'Linear mixed', x = max(myout_$value), y = max(myout_$qF), Slope = slope_lmm))
+    
+  }) %>% do.call(rbind,.)
+  
+  slope = slope %>% mutate(plotid = fct_inorder(plotid)) %>% arrange(plotid)
+  
+  
+  result = rbind(result,
+                 
+                 lapply(unique(result$name), function(x) {
+                   
+                   lmm.data = result %>% filter(name == x, plotid != "FIN")
+                   
+                   model <- lmer(formula = qF ~ 1 + value + (1 + value | plotid), 
+                                 data    = lmm.data)
+                   data.frame(fit = predict(model, re.form = NA), 
+                              qF = 0, 
+                              q = unique(lmm.data$q), 
+                              Type = unique(lmm.data$Type), 
+                              Dissimilarity = unique(lmm.data$Dissimilarity), 
+                              value = lmm.data$value, 
+                              plotid = 'Linear mixed', 
+                              name = x,
+                              p_value = summary(model)$coefficients[2, 'Pr(>|t|)'],
+                              Sig = ifelse( summary(model)$coefficients[2, 'Pr(>|t|)'] < 0.05, 
+                                            'Significant slope (P < 0.05)', 'Nonsignificant slope'))
+                 }) %>% do.call(rbind,.)
+  )
+  
+  
+  if (type == "uncorrected") {
+    
+    y_beta_q0 = c(rep(-0.027, 2), rep(-0.028, 2), rep(-0.029, 2))
+    ylim_beta_q0 = c(1, 1.02)
+    
+    y_beta_q12 = c(rep(-0.16, 4), rep(-0.167, 4), rep(-0.174, 4))
+    ylim_beta_q12 = c(1.02, 1.15)
+    
+    y_gamma = c(rep(1.5, 6), rep(1, 6), rep(0.5, 6))
+    ylim_gamma = c(7.8, 15.6)
+    
+    y_alpha = c(rep(1.5, 6), rep(1, 6), rep(0.5, 6))
+    ylim_alpha = c(7, 15.7)
+  }
+  
+  
+  if (type == "corrected") {
+    
+    y_beta_q0 = c(rep(-0.0237, 2), rep(-0.0247, 2), rep(-0.0257, 2))
+    ylim_beta_q0 = c(1, 1.019)
+    
+    y_beta_q12 = c(rep(-0.16, 4), rep(-0.167, 4), rep(-0.174, 4))
+    ylim_beta_q12 = c(1.02, 1.145)
+    
+    y_gamma = c(rep(1.5, 6), rep(1, 6), rep(0.5, 6))
+    ylim_gamma = c(7.5, 15.2)
+    
+    y_alpha = c(rep(1.9, 6), rep(1.2, 6), rep(0.5, 6))
+    ylim_alpha = c(6.8, 15.7)
+  }
+  
+  
+  col_manual_beta = scale_colour_manual(breaks = c("GER", "ITA", "POL", 
+                                                   "ROM", "SPA", "Linear mixed"),
+                                        label = c("Germany (5)", "Italy (5)", "Poland (5)", 
+                                                  "Romania (4)", "Spain (4)", "Linear mixed"),
+                                        values = c("GER" = "purple2", "ITA" = "darkorange", "POL" = "steelblue1", 
+                                                   "ROM" = "blue", "SPA" = "gray55", "Linear mixed" = "red"))
+  
+  size_manual_beta = scale_size_manual(values = c("GER" = 0.5, "ITA" = 0.5, "POL" = 0.5, 
+                                                  "ROM" = 0.5, "SPA" = 0.5, "Linear mixed" = 1.9))
+  
+  result$Sig = factor(result$Sig)
+  
+  
+  ## Beta multi-functionality v.s. Beta species diversity
+  fig.beta.q0 = ggplot() +
+    geom_point(data = result %>% filter(Type == 'Beta', Dissimilarity == 'Beta', !plotid %in% c('Linear mixed', 'FIN'), q == 0),
+               aes(x = value, y = qF, col = plotid), alpha = 0.05) +
+    geom_line(data = result %>% filter(Type == 'Beta', Dissimilarity == 'Beta', plotid != 'FIN', q == 0),
+              aes(x = value, y = fit, col = plotid, lty = Sig, size = plotid)) +
+    geom_text(data = slope %>% filter(Type == 'Beta', Dissimilarity == 'Beta', q == 0) %>% 
+                mutate(x = max(x) - c(0.8, 0.2, 0.8, 0.2, 0.8, 0.2),
+                       y = max(y) + y_beta_q0), 
+              aes(x = x, y = y, label = Slope, col = plotid), size = 4, show.legend = FALSE) +
+    theme_bw() +
+    facet_wrap(q ~ ., labeller = labeller(q = c(`0` = "q = 0"))) +
+    labs(x = NULL, y = "Beta multifunctionality") +
+    col_manual_beta +
+    size_manual_beta +
+    lty_manual +
+    fig.theme +
+    guide +
+    coord_cartesian(ylim = ylim_beta_q0)
+  
+  
+  fig.beta.q12 = ggplot() +
+    geom_point(data = result %>% filter(Type == 'Beta', Dissimilarity == 'Beta', !plotid %in% c('Linear mixed', 'FIN'), q %in% c(1,2)),
+               aes(x = value, y = qF, col = plotid), alpha = 0.05) +
+    geom_line(data = result %>% filter(Type == 'Beta', Dissimilarity == 'Beta', plotid != 'FIN', q %in% c(1,2)),
+              aes(x = value, y = fit, col = plotid, lty = Sig, size = plotid)) +
+    geom_text(data = slope %>% filter(Type == 'Beta', Dissimilarity == 'Beta', q %in% c(1,2)) %>% 
+                mutate(x = max(x) - rep(c(0.8, 0.2, 0.8, 0.2, 0.8, 0.2), each = 2),
+                       y = max(y) + y_beta_q12), 
+              aes(x = x, y = y, label = Slope, col = plotid), size = 4, show.legend = FALSE) +
+    theme_bw() +
+    facet_wrap(q ~ ., labeller = labeller(q = c(`1` = "q = 1", `2` = "q = 2"))) +
+    labs(x = "Beta species diversity", y = NULL) +
+    fig.theme +
+    theme(axis.title.x = element_text(hjust = 0)) +
+    col_manual_beta +
+    size_manual_beta +
+    lty_manual +
+    fig.theme +
+    guide +
+    coord_cartesian(ylim = ylim_beta_q12)
+  
+  fig.beta = annotate_figure(ggarrange(fig.beta.q0, fig.beta.q12, ncol = 2, nrow = 1, common.legend = TRUE, 
+                                       # align = 'h', legend = 'bottom', widths = c(1.2, 2))) 
+                                       align = 'h', legend = 'none', widths = c(1.2, 2))) 
+  
+  
+  
+  ## Gamma multi-functionality v.s. Gamma species diversity
+  fig.gamma = ggplot() +
+    geom_point(data = result %>% filter(Type == 'Gamma', Dissimilarity == 'Gamma', !plotid %in% c('Linear mixed', 'FIN')),
+               aes(x = value, y = qF, col = plotid), alpha = 0.05) +
+    geom_line(data = result %>% filter(Type == 'Gamma', Dissimilarity == 'Gamma', plotid != 'FIN'),
+              aes(x = value, y = fit, col = plotid, lty = Sig, size = plotid)) +
+    geom_text(data = slope %>% filter(Type == 'Gamma', Dissimilarity == 'Gamma') %>% 
+                mutate(x = max(x) - rep(c(3, 1, 3, 1, 3, 1), each = 3),
+                       y = max(y) + y_gamma), 
+              aes(x = x, y = y, label = Slope, col = plotid), size = 5, show.legend = FALSE) +
+    theme_bw() +
+    facet_wrap(q ~ ., scale = "fixed", labeller = labeller(q = c(`0` = "q = 0", `1` = "q = 1", `2` = "q = 2"))) +
+    labs(x = "Gamma species diversity", y = "Gamma multifunctionality") +
+    col_manual_beta +
+    size_manual_beta +
+    lty_manual +
+    fig.theme +
+    guide +
+    coord_cartesian(ylim = ylim_gamma)
+  
+  
+  
+  ## Alpha multi-functionality v.s. Alpha species diversity
+  fig.alpha = ggplot() +
+    geom_point(data = result %>% filter(Type == 'Alpha', Dissimilarity == 'Alpha', !plotid %in% c('Linear mixed', 'FIN')),
+               aes(x = value, y = qF, col = plotid), alpha = 0.05) +
+    geom_line(data = result %>% filter(Type == 'Alpha', Dissimilarity == 'Alpha', plotid != 'FIN'),
+              aes(x = value, y = fit, col = plotid, lty = Sig, size = plotid)) +
+    geom_text(data = slope %>% filter(Type == 'Alpha', Dissimilarity == 'Alpha') %>% 
+                mutate(x = max(x) - rep(c(3.3, 1, 3.3, 1, 3.3, 1), each = 3),
+                       y = max(y) + y_alpha), 
+              aes(x = x, y = y, label = Slope, col = plotid), size = 5, show.legend = FALSE) +
+    theme_bw() +
+    facet_wrap(q ~ ., scale = "fixed", labeller = labeller(q = c(`0` = "q = 0", `1` = "q = 1", `2` = "q = 2"))) +
+    labs(x = "Alpha species diversity", y = "Alpha multifunctionality") + 
+    col_manual_beta +
+    size_manual_beta +
+    lty_manual +
+    fig.theme +
+    guide +
+    coord_cartesian(ylim = ylim_alpha) + 
+    theme(legend.position = 'none')
+  
+  
+  list("fig.alpha" = fig.alpha, "fig.beta" = fig.beta, "fig.gamma" = fig.gamma)
+}
