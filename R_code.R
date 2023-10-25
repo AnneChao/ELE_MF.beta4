@@ -1,15 +1,9 @@
 library(lme4)
-library(dplyr)
-library(haven)
-library(tidyr)
 library(ggpubr)
-library(forcats)
-library(ggplot2)
 library(lmerTest)
 library(magrittr)
 library(parallel)
 library(reshape2)
-library(multifunc)
 library(tidyverse)
 library(missForest)
 library(RColorBrewer)
@@ -20,19 +14,19 @@ source("Source R code.txt")
 
 
 ## ========================= Load data ==================================== ##
-Ratcliffe = read.csv("Ratcliffe_et_al_ELE_12849_ecosystem_function_variables.csv")
+Europe_Forest_raw = read.csv("Europe_Forest_raw.csv")
 
-species_com = read.csv("FunDivEUROPE_BetaFor_species_composition.csv", sep = '"')[,c('block', 'plot', 'full_species_original', 'X.6')]
-colnames(species_com)[4] = "basal_area"
-species_com$block = unlist(strsplit(species_com$block, split = " "))
-species_com$basal_area = as.numeric(species_com$basal_area)
+Europe_Forest_species = read.csv("Europe_Forest_species.csv", sep = '"')[,c('block', 'plot', 'full_species_original', 'X.6')]
+colnames(Europe_Forest_species)[4] = "basal_area"
+Europe_Forest_species$block = unlist(strsplit(Europe_Forest_species$block, split = " "))
+Europe_Forest_species$basal_area = as.numeric(Europe_Forest_species$basal_area)
 
-tmp = species_com[species_com$block == "Germany",]
+tmp = Europe_Forest_species[Europe_Forest_species$block == "Germany",]
 for (i in 1:3) {
   tmp[,i] = factor(tmp[,i])
 }
 
-species_com[species_com$block == "Germany", "basal_area"] = missForest(tmp[,-1])$ximp$basal_area
+Europe_Forest_species[Europe_Forest_species$block == "Germany", "basal_area"] = missForest(tmp[,-1])$ximp$basal_area
 rm(tmp)
 
 
@@ -40,59 +34,57 @@ rm(tmp)
 for (x in c("FIN02", "FIN03", "FIN04", "FIN07", "FIN08", "FIN12", 
             "FIN13", "FIN15", "FIN20", "FIN24", "FIN25", "FIN26", "FIN28")) {
   
-  species_com[species_com$plot == x & species_com$full_species_original == "Betula.pendula", "basal_area"] =
-    sum(species_com[species_com$plot == x & species_com$full_species_original %in% c("Betula.pendula", "Betula.pubescens"), "basal_area"])
+  Europe_Forest_species[Europe_Forest_species$plot == x & Europe_Forest_species$full_species_original == "Betula.pendula", "basal_area"] =
+    sum(Europe_Forest_species[Europe_Forest_species$plot == x & Europe_Forest_species$full_species_original %in% c("Betula.pendula", "Betula.pubescens"), "basal_area"])
   
-  species_com = species_com[ -which(species_com$plot == x & species_com$full_species_original == "Betula.pubescens"),]
+  Europe_Forest_species = Europe_Forest_species[ -which(Europe_Forest_species$plot == x & Europe_Forest_species$full_species_original == "Betula.pubescens"),]
   
 }
 
-species_com[species_com$plot == "GER05" & species_com$full_species_original == "Quercus.petraea", "basal_area"] =
-  sum(species_com[species_com$plot == "GER05" & species_com$full_species_original %in% c("Quercus.petraea", "Quercus.robur"), "basal_area"])
+Europe_Forest_species[Europe_Forest_species$plot == "GER05" & Europe_Forest_species$full_species_original == "Quercus.petraea", "basal_area"] =
+  sum(Europe_Forest_species[Europe_Forest_species$plot == "GER05" & Europe_Forest_species$full_species_original %in% c("Quercus.petraea", "Quercus.robur"), "basal_area"])
 
-species_com = species_com[ -which(species_com$plot == "GER05" & species_com$full_species_original == "Quercus.robur"),]
+Europe_Forest_species = Europe_Forest_species[ -which(Europe_Forest_species$plot == "GER05" & Europe_Forest_species$full_species_original == "Quercus.robur"),]
 
-species_com$full_species_original[species_com$full_species_original == "Betula.pubescens"] = "Betula.pendula"
-species_com$full_species_original[species_com$full_species_original == "Quercus.robur"] = "Quercus.petraea"
+Europe_Forest_species$full_species_original[Europe_Forest_species$full_species_original == "Betula.pubescens"] = "Betula.pendula"
+Europe_Forest_species$full_species_original[Europe_Forest_species$full_species_original == "Quercus.robur"] = "Quercus.petraea"
 
 
 ##
-variables = colnames(Ratcliffe)[-(1:5)]
+variables = colnames(Europe_Forest_raw)[-(1:5)]
 
-Ratcliffe = standardize.Ratcliffe(Ratcliffe)
+Europe_Forest_raw = standardize.Europe_Forest_raw(Europe_Forest_raw)
 variables.std <- paste0(variables, ".std")
 
 
-correlation = Ratcliffe[,variables.std]
+correlation = Europe_Forest_raw[,variables.std]
 correlation = cor(correlation)
-
-distM.Byrnes = (1 - correlation) / 2
 distM = sqrt(1 - abs(correlation))
 
 
 
 ## ============================= Plot Figure 2 ======================================== ##
-Ratcliffe <- Ratcliffe %>%
-  mutate(mf_Chao_0 = apply(Ratcliffe[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 0)$qF),
-         mf_Chao_1 = apply(Ratcliffe[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 1)$qF),
-         mf_Chao_2 = apply(Ratcliffe[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 2)$qF),
+Europe_Forest_raw <- Europe_Forest_raw %>%
+  mutate(mf_Chao_0 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 0)$qMF),
+         mf_Chao_1 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 1)$qMF),
+         mf_Chao_2 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 2)$qMF),
          
-         mf_Chao_AUC_0 = apply(Ratcliffe[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 0) %>% filter(tau == 'AUC') %>% select(qF) %>% as.numeric),
-         mf_Chao_AUC_1 = apply(Ratcliffe[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 1) %>% filter(tau == 'AUC') %>% select(qF) %>% as.numeric),
-         mf_Chao_AUC_2 = apply(Ratcliffe[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 2) %>% filter(tau == 'AUC') %>% select(qF) %>% as.numeric)
+         mf_Chao_AUC_0 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 0) %>% filter(tau == 'AUC') %>% select(qMF) %>% as.numeric),
+         mf_Chao_AUC_1 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 1) %>% filter(tau == 'AUC') %>% select(qMF) %>% as.numeric),
+         mf_Chao_AUC_2 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 2) %>% filter(tau == 'AUC') %>% select(qMF) %>% as.numeric)
          )
 
-mf = Ratcliffe %>%
+mf = Europe_Forest_raw %>%
   select(plotid, target_species_richness, mf_Chao_0:mf_Chao_AUC_2) %>%
   pivot_longer(cols = c(mf_Chao_0:mf_Chao_AUC_2), names_to = "method") %>%
   mutate(method = fct_inorder(method))
 
 ## Compute species diversity
-mf = mf %>% mutate(target_species_richness = sapply(unique(species_com$plot), function(x) 
-  rep( qD( (species_com %>% filter(plot == x))$basal_area, q = c(0,1,2)), 2)) %>% as.vector)
+mf = mf %>% mutate(target_species_richness = sapply(unique(Europe_Forest_species$plot), function(x) 
+  rep( qD( (Europe_Forest_species %>% filter(plot == x))$basal_area, q = c(0,1,2)), 2)) %>% as.vector)
 
-mf = mf %>% mutate(Order.q = rep(c(0, 1, 2), 2*nrow(Ratcliffe)),
-                   Div = rep(rep(c('Uncorrected', 'Corrected'), each = 3), nrow(Ratcliffe)))
+mf = mf %>% mutate(Order.q = rep(c(0, 1, 2), 2*nrow(Europe_Forest_raw)),
+                   Div = rep(rep(c('Uncorrected', 'Corrected'), each = 3), nrow(Europe_Forest_raw)))
 
 
 
@@ -187,7 +179,7 @@ lty_manual = scale_linetype_manual(values = c("Nonsignificant slope" = "dashed",
 
 
 ## Figure 2
-ggplot() +
+Fig2 = ggplot() +
   geom_line(data = mf %>% mutate(Div = fct_inorder(Div)),
             aes(x = target_species_richness, y = fit, col = plotid, lty = Sig, size = plotid)) +
   geom_point(data = mf %>% filter(plotid != 'Linear mixed') %>% 
@@ -210,23 +202,24 @@ ggplot() +
   guide +
   coord_cartesian(ylim = c(7.3, 15.2))
 
+ggsave("Figure 2.pdf", plot = Fig2, width = 10, height = 10, dpi = 1000)
 
 
 
 ## =========================== Plot Figure 3, 4 ========================================= ##
 cpu.cores <- detectCores()-1
 cl <- makeCluster(cpu.cores)
-clusterExport(cl, varlist = c("Ratcliffe", "variables.std", "distM", "qD", "MF.uncor", "MF.cor", "beta.MF.uncor", "beta.MF.cor", "species_com"), 
+clusterExport(cl, varlist = c("Europe_Forest_raw", "variables.std", "distM", "qD", "MF.uncor", "MF.cor", "beta.MF.uncor", "beta.MF.cor", "Europe_Forest_species"), 
               envir = environment())
 clusterEvalQ(cl, c(library(dplyr), library(tidyr), library(reshape2)))
 
 
-beta.result.uncor = parLapply(cl, unique(Ratcliffe$plotid), function(x) {
+beta.result.uncor = parLapply(cl, unique(Europe_Forest_raw$plotid)[-1], function(x) {
   
-  country.data = Ratcliffe %>% filter(plotid == x)
+  country.data = Europe_Forest_raw %>% filter(plotid == x)
   comb = combn(1:nrow(country.data), 2)
   
-  species.data = species_com[substr(species_com$plot, 1, 3) == x,]
+  species.data = Europe_Forest_species[substr(Europe_Forest_species$plot, 1, 3) == x,]
   
   lapply(1:ncol(comb), function(i) {
     
@@ -253,12 +246,12 @@ beta.result.uncor = parLapply(cl, unique(Ratcliffe$plotid), function(x) {
 }) %>% do.call(rbind,.)
 
 
-beta.result.cor = parLapply(cl, unique(Ratcliffe$plotid), function(x) {
+beta.result.cor = parLapply(cl, unique(Europe_Forest_raw$plotid)[-1], function(x) {
   
-  country.data = Ratcliffe %>% filter(plotid == x)
+  country.data = Europe_Forest_raw %>% filter(plotid == x)
   comb = combn(1:nrow(country.data), 2)
   
-  species.data = species_com[substr(species_com$plot, 1, 3) == x,]
+  species.data = Europe_Forest_species[substr(Europe_Forest_species$plot, 1, 3) == x,]
   
   lapply(1:ncol(comb), function(i) {
     
@@ -297,6 +290,19 @@ fig3$fig.alpha  ## figure 3a
 fig3$fig.beta   ## figure 3b
 fig3$fig.gamma  ## figure 3c
 
+ggsave("Figure 3a.pdf", plot = fig3$fig.alpha, width = 9,  height = 6.5, dpi = 1000)
+ggsave("Figure 3b.pdf", plot = fig3$fig.beta,  width = 10, height = 6.5, dpi = 1000)
+ggsave("Figure 3c.pdf", plot = fig3$fig.gamma, width = 9,  height = 7,   dpi = 1000)
+
+
+library(ggpubr)
+ggsave("Figure 3.pdf", 
+       plot = ggarrange(fig3$fig.alpha + ggtitle("(a)") + theme(plot.title = element_text(size = 20, face = "bold")),
+                        fig3$fig.beta  + ggtitle("(b)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.06)),
+                        fig3$fig.gamma + ggtitle("(c)") + theme(plot.title = element_text(size = 20, face = "bold")),
+                        nrow = 3, heights = c(6, 6, 8)), 
+       width = 10,  height = 21, dpi = 1000)
+
 
 
 ## figure 4
@@ -305,5 +311,19 @@ fig4 = fig_alpha_gamma_beta(beta.result.cor,   type = "corrected")
 fig4$fig.alpha  ## figure 4a
 fig4$fig.beta   ## figure 4b
 fig4$fig.gamma  ## figure 4c
+
+
+ggsave("Figure 4a.pdf", plot = fig4$fig.alpha, width = 9,  height = 6.5, dpi = 1000)
+ggsave("Figure 4b.pdf", plot = fig4$fig.beta,  width = 10, height = 6.5, dpi = 1000)
+ggsave("Figure 4c.pdf", plot = fig4$fig.gamma, width = 9,  height = 7,   dpi = 1000)
+
+
+ggsave("Figure 4.pdf", 
+       plot = ggarrange(fig4$fig.alpha + ggtitle("(a)") + theme(plot.title = element_text(size = 20, face = "bold")),
+                        fig4$fig.beta  + ggtitle("(b)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.06)),
+                        fig4$fig.gamma + ggtitle("(c)") + theme(plot.title = element_text(size = 20, face = "bold")),
+                        nrow = 3, heights = c(6, 6, 8)), 
+       width = 10,  height = 21, dpi = 1000)
+
 
 

@@ -6,9 +6,9 @@ R code and data are provided for plotting all figures in the paper "Hill-Chao nu
 
 (1) Data Files: 
 
-(1a) Functions data: "Ratcliffe_et_al_ELE_12849_ecosystem_function_variables.csv" (for figures 2, 3, 4 in the paper). 
+(1a) Functions data: "Europe_Forest_raw.csv" (for figures 2, 3, 4 in the paper). 
 
-(1b) basal_area data: "FunDivEUROPE_BetaFor_species_composition.csv" (for Figures 2, 3, 4 in the paper).
+(1b) basal_area data: "Europe_Forest_species.csv" (for Figures 2, 3, 4 in the paper).
 
 (2) R_code.R: Main code for plotting all figures (for figures 2, 3, 4 in the paper).
 
