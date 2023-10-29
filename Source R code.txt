@@ -180,8 +180,8 @@ beta.MF.cor = function(fij, distM, tau = seq(0, 1, 0.01), q) {
         beta %>% mutate(Type = 'Beta'))
 }
 
-#' @Function standardize.Europe_Forest_raw is used to standardize Europe_Forest_raw data.
-standardize.Europe_Forest_raw = function(Europe_Forest_raw) {
+#' @Function function.normalization is used to standardize Europe_Forest_raw data.
+function.normalization = function(Europe_Forest_raw) {
   
   Europe_Forest_raw$plotid = substr(Europe_Forest_raw$plotid, 1, 3)
   

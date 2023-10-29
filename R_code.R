@@ -14,77 +14,74 @@ source("Source R code.txt")
 
 
 ## ========================= Load data ==================================== ##
-Europe_Forest_raw = read.csv("Europe_Forest_raw.csv")
+Forest_function_data_raw = read.csv("Forest_function_data_raw.csv")
 
-Europe_Forest_species = read.csv("Europe_Forest_species.csv", sep = '"')[,c('block', 'plot', 'full_species_original', 'X.6')]
-colnames(Europe_Forest_species)[4] = "basal_area"
-Europe_Forest_species$block = unlist(strsplit(Europe_Forest_species$block, split = " "))
-Europe_Forest_species$basal_area = as.numeric(Europe_Forest_species$basal_area)
+Forest_biodiversity_data = read.csv("Forest_biodiversity_data.csv", sep = '"')[,c('block', 'plot', 'full_species_original', 'X.6')]
+colnames(Forest_biodiversity_data)[4] = "basal_area"
+Forest_biodiversity_data$block = unlist(strsplit(Forest_biodiversity_data$block, split = " "))
+Forest_biodiversity_data$basal_area = as.numeric(Forest_biodiversity_data$basal_area)
 
-tmp = Europe_Forest_species[Europe_Forest_species$block == "Germany",]
-for (i in 1:3) {
-  tmp[,i] = factor(tmp[,i])
-}
+Forest_biodiversity_data[which(is.na(Forest_biodiversity_data$basal_area))[1], 'basal_area'] =
+  mean(Forest_biodiversity_data[Forest_biodiversity_data$block == "Germany" & Forest_biodiversity_data$full_species_original == "Quercus.robur", "basal_area"], na.rm = T)
 
-Europe_Forest_species[Europe_Forest_species$block == "Germany", "basal_area"] = missForest(tmp[,-1])$ximp$basal_area
-rm(tmp)
-
+Forest_biodiversity_data[which(is.na(Forest_biodiversity_data$basal_area)), 'basal_area'] =
+  mean(Forest_biodiversity_data[Forest_biodiversity_data$block == "Germany" & Forest_biodiversity_data$full_species_original == "Acer.pseudoplatanus", "basal_area"], na.rm = T)
 
 
 for (x in c("FIN02", "FIN03", "FIN04", "FIN07", "FIN08", "FIN12", 
             "FIN13", "FIN15", "FIN20", "FIN24", "FIN25", "FIN26", "FIN28")) {
   
-  Europe_Forest_species[Europe_Forest_species$plot == x & Europe_Forest_species$full_species_original == "Betula.pendula", "basal_area"] =
-    sum(Europe_Forest_species[Europe_Forest_species$plot == x & Europe_Forest_species$full_species_original %in% c("Betula.pendula", "Betula.pubescens"), "basal_area"])
+  Forest_biodiversity_data[Forest_biodiversity_data$plot == x & Forest_biodiversity_data$full_species_original == "Betula.pendula", "basal_area"] =
+    sum(Forest_biodiversity_data[Forest_biodiversity_data$plot == x & Forest_biodiversity_data$full_species_original %in% c("Betula.pendula", "Betula.pubescens"), "basal_area"])
   
-  Europe_Forest_species = Europe_Forest_species[ -which(Europe_Forest_species$plot == x & Europe_Forest_species$full_species_original == "Betula.pubescens"),]
+  Forest_biodiversity_data = Forest_biodiversity_data[ -which(Forest_biodiversity_data$plot == x & Forest_biodiversity_data$full_species_original == "Betula.pubescens"),]
   
 }
 
-Europe_Forest_species[Europe_Forest_species$plot == "GER05" & Europe_Forest_species$full_species_original == "Quercus.petraea", "basal_area"] =
-  sum(Europe_Forest_species[Europe_Forest_species$plot == "GER05" & Europe_Forest_species$full_species_original %in% c("Quercus.petraea", "Quercus.robur"), "basal_area"])
+Forest_biodiversity_data[Forest_biodiversity_data$plot == "GER05" & Forest_biodiversity_data$full_species_original == "Quercus.petraea", "basal_area"] =
+  sum(Forest_biodiversity_data[Forest_biodiversity_data$plot == "GER05" & Forest_biodiversity_data$full_species_original %in% c("Quercus.petraea", "Quercus.robur"), "basal_area"])
 
-Europe_Forest_species = Europe_Forest_species[ -which(Europe_Forest_species$plot == "GER05" & Europe_Forest_species$full_species_original == "Quercus.robur"),]
+Forest_biodiversity_data = Forest_biodiversity_data[ -which(Forest_biodiversity_data$plot == "GER05" & Forest_biodiversity_data$full_species_original == "Quercus.robur"),]
 
-Europe_Forest_species$full_species_original[Europe_Forest_species$full_species_original == "Betula.pubescens"] = "Betula.pendula"
-Europe_Forest_species$full_species_original[Europe_Forest_species$full_species_original == "Quercus.robur"] = "Quercus.petraea"
+Forest_biodiversity_data$full_species_original[Forest_biodiversity_data$full_species_original == "Betula.pubescens"] = "Betula.pendula"
+Forest_biodiversity_data$full_species_original[Forest_biodiversity_data$full_species_original == "Quercus.robur"] = "Quercus.petraea"
 
 
 ##
-variables = colnames(Europe_Forest_raw)[-(1:5)]
+variables = colnames(Forest_function_data_raw)[-(1:5)]
 
-Europe_Forest_raw = standardize.Europe_Forest_raw(Europe_Forest_raw)
+Forest_function_data_raw = function.normalization(Forest_function_data_raw)
 variables.std <- paste0(variables, ".std")
 
 
-correlation = Europe_Forest_raw[,variables.std]
+correlation = Forest_function_data_raw[,variables.std]
 correlation = cor(correlation)
 distM = sqrt(1 - abs(correlation))
 
 
 
 ## ============================= Plot Figure 2 ======================================== ##
-Europe_Forest_raw <- Europe_Forest_raw %>%
-  mutate(mf_Chao_0 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 0)$qMF),
-         mf_Chao_1 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 1)$qMF),
-         mf_Chao_2 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 2)$qMF),
+Forest_function_data_raw <- Forest_function_data_raw %>%
+  mutate(mf_Chao_0 = apply(Forest_function_data_raw[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 0)$qMF),
+         mf_Chao_1 = apply(Forest_function_data_raw[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 1)$qMF),
+         mf_Chao_2 = apply(Forest_function_data_raw[,variables.std], 1, function(x) MF.uncor(x, rep(1, length(x)), 2)$qMF),
          
-         mf_Chao_AUC_0 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 0) %>% filter(tau == 'AUC') %>% select(qMF) %>% as.numeric),
-         mf_Chao_AUC_1 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 1) %>% filter(tau == 'AUC') %>% select(qMF) %>% as.numeric),
-         mf_Chao_AUC_2 = apply(Europe_Forest_raw[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 2) %>% filter(tau == 'AUC') %>% select(qMF) %>% as.numeric)
+         mf_Chao_AUC_0 = apply(Forest_function_data_raw[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 0) %>% filter(tau == 'AUC') %>% select(qMF) %>% as.numeric),
+         mf_Chao_AUC_1 = apply(Forest_function_data_raw[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 1) %>% filter(tau == 'AUC') %>% select(qMF) %>% as.numeric),
+         mf_Chao_AUC_2 = apply(Forest_function_data_raw[,variables.std], 1, function(x) MF.cor(x, rep(1, length(x)), distM, q = 2) %>% filter(tau == 'AUC') %>% select(qMF) %>% as.numeric)
          )
 
-mf = Europe_Forest_raw %>%
+mf = Forest_function_data_raw %>%
   select(plotid, target_species_richness, mf_Chao_0:mf_Chao_AUC_2) %>%
   pivot_longer(cols = c(mf_Chao_0:mf_Chao_AUC_2), names_to = "method") %>%
   mutate(method = fct_inorder(method))
 
 ## Compute species diversity
-mf = mf %>% mutate(target_species_richness = sapply(unique(Europe_Forest_species$plot), function(x) 
-  rep( qD( (Europe_Forest_species %>% filter(plot == x))$basal_area, q = c(0,1,2)), 2)) %>% as.vector)
+mf = mf %>% mutate(target_species_richness = sapply(unique(Forest_biodiversity_data$plot), function(x) 
+  rep( qD( (Forest_biodiversity_data %>% filter(plot == x))$basal_area, q = c(0,1,2)), 2)) %>% as.vector)
 
-mf = mf %>% mutate(Order.q = rep(c(0, 1, 2), 2*nrow(Europe_Forest_raw)),
-                   Div = rep(rep(c('Uncorrected', 'Corrected'), each = 3), nrow(Europe_Forest_raw)))
+mf = mf %>% mutate(Order.q = rep(c(0, 1, 2), 2*nrow(Forest_function_data_raw)),
+                   Div = rep(rep(c('Uncorrected', 'Corrected'), each = 3), nrow(Forest_function_data_raw)))
 
 
 
@@ -179,7 +176,7 @@ lty_manual = scale_linetype_manual(values = c("Nonsignificant slope" = "dashed",
 
 
 ## Figure 2
-Fig2 = ggplot() +
+ggplot() +
   geom_line(data = mf %>% mutate(Div = fct_inorder(Div)),
             aes(x = target_species_richness, y = fit, col = plotid, lty = Sig, size = plotid)) +
   geom_point(data = mf %>% filter(plotid != 'Linear mixed') %>% 
@@ -202,24 +199,23 @@ Fig2 = ggplot() +
   guide +
   coord_cartesian(ylim = c(7.3, 15.2))
 
-ggsave("Figure 2.pdf", plot = Fig2, width = 10, height = 10, dpi = 1000)
 
 
 
 ## =========================== Plot Figure 3, 4 ========================================= ##
 cpu.cores <- detectCores()-1
 cl <- makeCluster(cpu.cores)
-clusterExport(cl, varlist = c("Europe_Forest_raw", "variables.std", "distM", "qD", "MF.uncor", "MF.cor", "beta.MF.uncor", "beta.MF.cor", "Europe_Forest_species"), 
+clusterExport(cl, varlist = c("Forest_function_data_raw", "variables.std", "distM", "qD", "MF.uncor", "MF.cor", "beta.MF.uncor", "beta.MF.cor", "Forest_biodiversity_data"), 
               envir = environment())
 clusterEvalQ(cl, c(library(dplyr), library(tidyr), library(reshape2)))
 
 
-beta.result.uncor = parLapply(cl, unique(Europe_Forest_raw$plotid)[-1], function(x) {
+beta.result.uncor = parLapply(cl, unique(Forest_function_data_raw$plotid)[-1], function(x) {
   
-  country.data = Europe_Forest_raw %>% filter(plotid == x)
+  country.data = Forest_function_data_raw %>% filter(plotid == x)
   comb = combn(1:nrow(country.data), 2)
   
-  species.data = Europe_Forest_species[substr(Europe_Forest_species$plot, 1, 3) == x,]
+  species.data = Forest_biodiversity_data[substr(Forest_biodiversity_data$plot, 1, 3) == x,]
   
   lapply(1:ncol(comb), function(i) {
     
@@ -246,12 +242,12 @@ beta.result.uncor = parLapply(cl, unique(Europe_Forest_raw$plotid)[-1], function
 }) %>% do.call(rbind,.)
 
 
-beta.result.cor = parLapply(cl, unique(Europe_Forest_raw$plotid)[-1], function(x) {
+beta.result.cor = parLapply(cl, unique(Forest_function_data_raw$plotid)[-1], function(x) {
   
-  country.data = Europe_Forest_raw %>% filter(plotid == x)
+  country.data = Forest_function_data_raw %>% filter(plotid == x)
   comb = combn(1:nrow(country.data), 2)
   
-  species.data = Europe_Forest_species[substr(Europe_Forest_species$plot, 1, 3) == x,]
+  species.data = Forest_biodiversity_data[substr(Forest_biodiversity_data$plot, 1, 3) == x,]
   
   lapply(1:ncol(comb), function(i) {
     
@@ -290,19 +286,6 @@ fig3$fig.alpha  ## figure 3a
 fig3$fig.beta   ## figure 3b
 fig3$fig.gamma  ## figure 3c
 
-ggsave("Figure 3a.pdf", plot = fig3$fig.alpha, width = 9,  height = 6.5, dpi = 1000)
-ggsave("Figure 3b.pdf", plot = fig3$fig.beta,  width = 10, height = 6.5, dpi = 1000)
-ggsave("Figure 3c.pdf", plot = fig3$fig.gamma, width = 9,  height = 7,   dpi = 1000)
-
-
-library(ggpubr)
-ggsave("Figure 3.pdf", 
-       plot = ggarrange(fig3$fig.alpha + ggtitle("(a)") + theme(plot.title = element_text(size = 20, face = "bold")),
-                        fig3$fig.beta  + ggtitle("(b)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.06)),
-                        fig3$fig.gamma + ggtitle("(c)") + theme(plot.title = element_text(size = 20, face = "bold")),
-                        nrow = 3, heights = c(6, 6, 8)), 
-       width = 10,  height = 21, dpi = 1000)
-
 
 
 ## figure 4
@@ -311,19 +294,5 @@ fig4 = fig_alpha_gamma_beta(beta.result.cor,   type = "corrected")
 fig4$fig.alpha  ## figure 4a
 fig4$fig.beta   ## figure 4b
 fig4$fig.gamma  ## figure 4c
-
-
-ggsave("Figure 4a.pdf", plot = fig4$fig.alpha, width = 9,  height = 6.5, dpi = 1000)
-ggsave("Figure 4b.pdf", plot = fig4$fig.beta,  width = 10, height = 6.5, dpi = 1000)
-ggsave("Figure 4c.pdf", plot = fig4$fig.gamma, width = 9,  height = 7,   dpi = 1000)
-
-
-ggsave("Figure 4.pdf", 
-       plot = ggarrange(fig4$fig.alpha + ggtitle("(a)") + theme(plot.title = element_text(size = 20, face = "bold")),
-                        fig4$fig.beta  + ggtitle("(b)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.06)),
-                        fig4$fig.gamma + ggtitle("(c)") + theme(plot.title = element_text(size = 20, face = "bold")),
-                        nrow = 3, heights = c(6, 6, 8)), 
-       width = 10,  height = 21, dpi = 1000)
-
 
 
