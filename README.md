@@ -14,3 +14,5 @@ R code and data are provided for plotting all figures in the paper "Hill-Chao nu
 
 (3) Source R code: "Source R code.txt".
 
+(4) Brief guide ELE_MF.beta4.docx: a brief guide to R code for making graphics in Chao et al. 2023 paper.
+
